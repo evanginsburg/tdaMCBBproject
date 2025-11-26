@@ -1,0 +1,151 @@
+---
+title: "Getting Shot Data for TDA"
+format: html
+editor: visual
+---
+
+## Downloading Shot Data
+
+Packages
+
+```{r}
+library(hoopR)
+library(dplyr)
+library(purrr)
+```
+
+Seasons and Columns
+
+```{r}
+seasons <- 2012:2024
+
+keep_cols <- c(
+  # identifiers
+  "game_id",
+  "game_play_number",
+  "id",
+  "sequence_number",
+  "season",
+  "season_type",
+  
+  # player
+  "athlete_id_1",
+  
+  # period / clock
+  "period",
+  "period_number",
+  "period_display_value",
+  "time",
+  "clock_display_value",
+  "clock_minutes",
+  "clock_seconds",
+  "half",
+  "game_half",
+  
+  # scoring / shot info
+  "away_score",
+  "home_score",
+  "scoring_play",
+  "score_value",
+  "shooting_play",
+  
+  # teams
+  "team_id",
+  "home_team_id",
+  "home_team_name",
+  "away_team_id",
+  "away_team_name",
+  
+  # coordinates
+  "coordinate_x",
+  "coordinate_y"
+)
+```
+
+Shots by Season Helper Function
+
+```{r}
+make_shot_list <- function(loader_fun, seasons, league_tag) {
+  out <- lapply(seasons, function(s) {
+    message("Loading ", league_tag, " season ", s, " ...")
+    
+    pbp <- loader_fun(seasons = s)
+
+    pbp %>%
+      filter(shooting_play) %>%              # only shots
+      select(any_of(keep_cols)) %>%          # keep common/useful cols
+      mutate(
+        season = s,                          # ensure season is correct
+        league = league_tag                  # "NBA" or "MBB"
+      )
+  })
+  
+  names(out) <- paste0(league_tag, "_", seasons)
+  out
+}
+```
+
+NBA Seasons Dataframes
+
+```{r}
+# NBA: one data frame per season
+nba_shots_by_season <- make_shot_list(
+  loader_fun = load_nba_pbp,
+  seasons    = seasons,
+  league_tag = "NBA"
+)
+```
+
+MCBB Seasons Dataframes
+
+```{r}
+
+# MBB: one data frame per season
+mbb_shots_by_season <- make_shot_list(
+  loader_fun = load_mbb_pbp,
+  seasons    = seasons,
+  league_tag = "MBB"
+)
+```
+
+Export Packages
+
+```{r}
+library(arrow)
+library(dplyr)
+```
+
+Export NBA Parquet
+
+```{r}
+# nba_shots_by_season should be your list: NBA_2012, NBA_2013, ...
+
+for (nm in names(nba_shots_by_season)) {
+  df <- nba_shots_by_season[[nm]]
+  
+  # get the season value (you set this in make_shot_list)
+  season_val <- unique(df$season)
+  if (length(season_val) != 1L) {
+    stop("Multiple seasons found in ", nm)
+  }
+  
+  out_path <- sprintf("data/nba/nba_shots_%s.parquet", season_val)
+  write_parquet(df, out_path)
+}
+```
+
+Export MCBB Parquet
+
+```{r}
+for (nm in names(mbb_shots_by_season)) {
+  df <- mbb_shots_by_season[[nm]]
+  
+  season_val <- unique(df$season)
+  if (length(season_val) != 1L) {
+    stop("Multiple seasons found in ", nm)
+  }
+  
+  out_path <- sprintf("data/mbb/mbb_shots_%s.parquet", season_val)
+  write_parquet(df, out_path)
+}
+```
